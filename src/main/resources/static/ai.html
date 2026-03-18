@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>AI 助手</title>
+    <style>
+      :root {
+        --bg: #0b1020;
+        --panel: rgba(255, 255, 255, 0.06);
+        --panel2: rgba(255, 255, 255, 0.09);
+        --text: rgba(255, 255, 255, 0.92);
+        --muted: rgba(255, 255, 255, 0.65);
+        --accent: #4ea1ff;
+        --user: #1f7aec;
+        --ai: rgba(255, 255, 255, 0.12);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC",
+          "Microsoft YaHei", "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif;
+        background: radial-gradient(1200px 800px at 20% 10%, #1a2a6c 0%, transparent 55%),
+          radial-gradient(1000px 700px at 90% 20%, #0f9b8e 0%, transparent 55%),
+          radial-gradient(900px 600px at 50% 90%, #b06ab3 0%, transparent 50%),
+          var(--bg);
+        color: var(--text);
+      }
+      .wrap { max-width: 980px; margin: 0 auto; padding: 22px; }
+      .header {
+        display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+        margin-bottom: 14px;
+      }
+      .title { font-size: 18px; font-weight: 800; letter-spacing: 0.2px; }
+      .hint { font-size: 12px; color: var(--muted); }
+      .card {
+        background: var(--panel);
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        border-radius: 14px;
+        overflow: hidden;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+      }
+      .msgs {
+        height: 560px;
+        overflow: auto;
+        padding: 16px;
+      }
+      .row { display: flex; margin: 10px 0; }
+      .row.user { justify-content: flex-end; }
+      .bubble {
+        max-width: 78%;
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        background: var(--ai);
+        line-height: 1.55;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .row.user .bubble {
+        background: rgba(31, 122, 236, 0.24);
+        border-color: rgba(78, 161, 255, 0.35);
+      }
+      .meta { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+      .composer {
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        gap: 10px;
+        padding: 14px;
+        border-top: 1px solid rgba(255, 255, 255, 0.10);
+        background: var(--panel2);
+      }
+      textarea {
+        width: 100%;
+        resize: none;
+        min-height: 54px;
+        max-height: 160px;
+        padding: 10px 10px;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(0, 0, 0, 0.18);
+        color: var(--text);
+        outline: none;
+      }
+      textarea:focus { border-color: rgba(78, 161, 255, 0.55); }
+      button {
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        background: rgba(0, 0, 0, 0.16);
+        color: var(--text);
+        border-radius: 12px;
+        padding: 0 14px;
+        font-weight: 700;
+        cursor: pointer;
+        height: 54px;
+      }
+      button.primary {
+        background: rgba(78, 161, 255, 0.22);
+        border-color: rgba(78, 161, 255, 0.45);
+      }
+      button:disabled { opacity: 0.55; cursor: not-allowed; }
+      .footer { margin-top: 10px; font-size: 12px; color: var(--muted); }
+      code { background: rgba(0,0,0,0.18); padding: 2px 6px; border-radius: 8px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="header">
+        <div class="title">AI 助手（网页版）</div>
+        <div class="hint">接口：<code>POST /springboot003ds/ai/chat</code></div>
+      </div>
+
+      <div class="card">
+        <div class="msgs" id="msgs"></div>
+        <div class="composer">
+          <textarea id="input" placeholder="Enter 发送，Shift+Enter 换行"></textarea>
+          <button id="clear">清空</button>
+          <button id="send" class="primary">发送</button>
+        </div>
+      </div>
+
+      <div class="footer">
+        如果你配置了大模型（DashScope/DeepSeek 等 OpenAI 兼容），这里会返回真实模型回复；否则返回本地规则回复。
+      </div>
+    </div>
+
+    <script>
+      const msgsEl = document.getElementById('msgs')
+      const inputEl = document.getElementById('input')
+      const sendBtn = document.getElementById('send')
+      const clearBtn = document.getElementById('clear')
+
+      function now() {
+        const d = new Date()
+        const pad = (n) => (n < 10 ? '0' + n : '' + n)
+        return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+      }
+
+      function add(role, content) {
+        const row = document.createElement('div')
+        row.className = `row ${role}`
+        const bubble = document.createElement('div')
+        bubble.className = 'bubble'
+        const meta = document.createElement('div')
+        meta.className = 'meta'
+        meta.textContent = `${role === 'user' ? '我' : 'AI'} · ${now()}`
+        const body = document.createElement('div')
+        body.textContent = content
+        bubble.appendChild(meta)
+        bubble.appendChild(body)
+        row.appendChild(bubble)
+        msgsEl.appendChild(row)
+        msgsEl.scrollTop = msgsEl.scrollHeight
+      }
+
+      add('assistant', '你好！这是网页里的 AI 助手。你可以直接提问，比如“怎么启动项目/怎么配置数据库”。')
+
+      async function send() {
+        const text = (inputEl.value || '').trim()
+        if (!text) return
+        inputEl.value = ''
+        add('user', text)
+
+        sendBtn.disabled = true
+        try {
+          // 从后台系统的 localStorage 里取角色（管理员/用户/员工）
+          const role = (localStorage.getItem('role') || '').replaceAll('"', '')
+
+          // 把最近对话一并发给后端，便于连续对话
+          const rows = Array.from(msgsEl.querySelectorAll('.row'))
+          const history = rows
+            .map((row) => {
+              const role = row.classList.contains('user') ? 'user' : 'assistant'
+              const contentEl = row.querySelector('.bubble > div:last-child')
+              return { role, content: contentEl ? contentEl.textContent : '' }
+            })
+            .filter((m) => m && m.content)
+            .slice(-12)
+
+          const resp = await fetch('/springboot003ds/ai/chat', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              // 让后端用真实登录身份做权限判断/查询
+              'Token': (localStorage.getItem('Token') || '').replaceAll('"', '')
+            },
+            body: JSON.stringify({ role, message: text, messages: history })
+          })
+          const data = await resp.json()
+          if (data && data.code === 0) add('assistant', data.data || '')
+          else add('assistant', (data && data.msg) ? data.msg : '请求失败')
+        } catch (e) {
+          add('assistant', e && e.message ? e.message : '网络异常')
+        } finally {
+          sendBtn.disabled = false
+        }
+      }
+
+      sendBtn.addEventListener('click', send)
+      clearBtn.addEventListener('click', () => {
+        msgsEl.innerHTML = ''
+        add('assistant', '已清空。继续提问吧。')
+      })
+      inputEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault()
+          send()
+        }
+      })
+    </script>
+  </body>
+</html>
+
